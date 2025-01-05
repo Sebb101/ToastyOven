@@ -9,21 +9,22 @@
 #include <SPI.h>
 #endif
 
-
+#define BIT(a) (1 << (a))
 // SSR Pin
-#define SSRpin 9
+//#define SSRpin 9 // D9 - PortB pin 2
+#define SSRpin 2 // D9 - PortB pin 2
 
 // LED pins
-#define statusLEDpin 7
-#define alertLEDpin 12
+#define statusLEDpin 7 // D7 - PortD pin 7
+#define alertLEDpin 12 // D12 - PortB pin 4
 
 // Buzzer Pins
-#define buzzerPin 6
+#define buzzerPin 6 // D6 - PortD pin 6
 
 // Quadrature Encoder Pins
-#define A_CLK   15 //A0
-#define B_DT   14 //A1
-#define encoder_switch 8 //D8
+#define A_CLK   15 //A0 (15), PortC pin 0
+#define B_DT   14 //A1 (14), PortC pin 1
+#define encoder_switch 8 //D8, PortB pin0
 
 // Pin A, Pin B, Button Pin
 SimpleRotary rotary(A_CLK,B_DT,encoder_switch);
@@ -54,7 +55,7 @@ double Kp=2, Ki=5, Kd=1;
 PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, DIRECT);
 
 // LCD Constructor
-U8G2_ST7920_128X64_F_SW_SPI u8g2(U8G2_R0, /* clock=*/ 13, /* data=*/ 11, /* CS=*/ 10, /* reset=*/ 8);
+U8G2_ST7920_128X64_F_SW_SPI u8g2(U8G2_R0, /* clock=*/ 13, /* data=*/ 11, /* CS=*/ 10, /* reset=*/ 16);
 
 // U8g2 User Interface
 MUIU8G2 mui;
@@ -63,7 +64,9 @@ uint8_t is_redraw = 1;
 uint8_t rotary_event = 0; // 0 = not turning, 1 = CW, 2 = CCW
 uint8_t push_event = 0; // 0 = not pushed, 1 = pushed
 
-// Profile Selection List
+// Profile Selection List & Reflow Graph
+#define maxgraph_width 80
+#define maxgraph_height 42
 uint8_t profileNUM = 0; // 0 = profile 1, 1 = profile 2 and 2 = profile 3
 uint8_t is_profiledisplay_running = 0;// defines the current state of the profile: running or not running
 uint8_t is_reflow_running = 0;
@@ -74,6 +77,19 @@ uint8_t reflowState = 0; // 0 OFF, 1 preheat, 2 soak, 3 peak Climb, 4 Peak, 5 co
 
 float preheat_time, soak_time, peakclimb_time, peak_time, cooldown_time;
 double preheat_temp, soak_temp, peakclimb_temp, peak_temp, cooldown_temp;
+
+uint8_t pixel_t1, pixel_t2, pixel_t3, pixel_t4, pixel_t5;
+uint8_t pixel_temp1, pixel_temp2, pixel_temp3, pixel_temp4, pixel_temp5;
+uint8_t pixel_graphline=3;
+//uint8_t graph_array[2][80];
+// uint8_t graph_index = 0;
+
+// uint8_t time_pixelcoord = 3;
+// uint8_t temp_pixelcoord = 3;
+
+float startTemp_reflow = 0;
+// float graph_frame = 0;
+// float graph_start_frame = 0;
 
 #define PROFILE_MAX_TIME 255
 #define PROFILE_MAX_TEMP 255
@@ -94,7 +110,7 @@ struct array_element_struct
 
 /* array list  */
 
-#define PROFILE_ELEMENT_CNT 3
+#define PROFILE_ELEMENT_CNT 2
 struct array_element_struct profile_array[PROFILE_ELEMENT_CNT];
 
 /* array editable local copy */
@@ -126,7 +142,14 @@ uint8_t muif_reflowprofile_init(mui_t *ui, uint8_t msg){
   switch(msg){
     case MUIF_MSG_FORM_START:
       time_reflow_started = millis();
+      //graph_start_frame = millis();
       is_reflow_running = 1;
+      startTemp_reflow = tempC;
+
+      // for(int i=0;i<80;i++){
+      //   graph_array[0][i] = 3;
+      //   graph_array[1][i] = 3;
+      // }
 
       // Assign selected profile over to actual parameters and convert from hs to ms
       preheat_time = ((float) profile_array[profileNUM].time1) * 10000;
@@ -141,6 +164,18 @@ uint8_t muif_reflowprofile_init(mui_t *ui, uint8_t msg){
       peak_temp = (double) profile_array[profileNUM].temp4;
       cooldown_temp = (double) profile_array[profileNUM].temp5;
 
+      pixel_t1 = (int)(preheat_time*(maxgraph_width/cooldown_time))+3;
+      pixel_t2 = (int)(soak_time*(maxgraph_width/cooldown_time))+3;
+      pixel_t3 = (int)(peakclimb_time*(maxgraph_width/cooldown_time))+3;
+      pixel_t4 = (int)(peak_time*(maxgraph_width/cooldown_time))+3;
+      pixel_t5 = (int)(cooldown_time*(maxgraph_width/cooldown_time))+3;
+
+      pixel_temp1 = (int) (maxgraph_height+5)-(preheat_temp*((maxgraph_height+3) /cooldown_temp));
+      pixel_temp2 = (int) (maxgraph_height+5)-(soak_temp*((maxgraph_height+3) /cooldown_temp));
+      pixel_temp3 = (int) (maxgraph_height+5)-(peakclimb_temp*((maxgraph_height+3) /cooldown_temp));
+      pixel_temp4 = (int) (maxgraph_height+5)-(peak_temp*((maxgraph_height+3) /cooldown_temp));
+      pixel_temp5 = (int) (maxgraph_height+5)-(cooldown_temp*((maxgraph_height+3) /cooldown_temp));
+
       myPID.SetOutputLimits(0, 1);
 
       return_value = mui_u8g2_btn_goto_wm_fi(ui, msg);                    // call the original MUIF
@@ -152,7 +187,9 @@ uint8_t muif_reflowprofile_init(mui_t *ui, uint8_t msg){
       // turn the PID OFF
       myPID.SetMode(MANUAL);
       digitalWrite(SSRpin,LOW);
+      //PORTB = ~( (~PORTB) | BIT(SSRpin) );
       digitalWrite(buzzerPin,LOW);
+      //PORTD = ~( (~PORTD) | BIT(buzzerPin) );
 
       return_value = mui_u8g2_btn_goto_wm_fi(ui, msg);                    // finalise the form
       break;
@@ -164,6 +201,7 @@ uint8_t muif_reflowprofile_init(mui_t *ui, uint8_t msg){
 }
 
 void run_reflowprofile(void){
+  uint8_t reminder = 0; 
 
   // turn the PID on
   myPID.SetMode(AUTOMATIC);
@@ -174,8 +212,10 @@ void run_reflowprofile(void){
 
   if(time_since_reflow <= 500){
     digitalWrite(buzzerPin,HIGH);
+    //PORTD |= BIT(buzzerPin);
   } else{
     digitalWrite(buzzerPin,LOW);
+    //PORTD = ~( (~PORTD) | BIT(buzzerPin) );
   }
 
   // Pre-Heat Cycle
@@ -201,12 +241,13 @@ void run_reflowprofile(void){
 
     if(time_since_reflow >= cooldown_time - 500 ){
       digitalWrite(buzzerPin,HIGH);
+      //PORTD |= BIT(buzzerPin);
     } else{
       digitalWrite(buzzerPin,LOW);
+      //PORTD = ~( (~PORTD) | BIT(buzzerPin) );
     }
   } else {
     Setpoint = 0;
-    //digitalWrite(SSRpin,LOW);
     reflowState = 6;
     is_reflow_running = 0;
   }
@@ -214,10 +255,30 @@ void run_reflowprofile(void){
   myPID.Compute();
   if(Output < 0.5){
     digitalWrite(SSRpin,LOW);
+    //PORTB = ~( (~PORTB) | BIT(SSRpin) );
   }
   if(Output > 0.5){
     digitalWrite(SSRpin,HIGH);
+    //PORTB = ~( (~PORTB) | BIT(SSRpin) );
   }
+
+  // graph_frame = millis() - graph_start_frame;
+  // if(graph_frame >= 5000) {
+  //   graph_start_frame = millis();
+  //   time_pixelcoord = graph_index + 3;
+
+  //   if(((int)(tempC-startTemp_reflow))%10 >=5){
+  //     temp_pixelcoord = ( (int)((tempC-startTemp_reflow)/10) ) + 1;
+  //   } else {
+  //     temp_pixelcoord = ( (int)((tempC-startTemp_reflow)/10) );
+  //   }
+
+  //   graph_array[0][graph_index] = time_pixelcoord;
+  //   graph_array[1][graph_index] = temp_pixelcoord;
+  //   if(graph_index <=80){
+  //       graph_index++;
+  //   }
+  // }
 
 }
 
@@ -307,7 +368,7 @@ uint8_t mui_draw_current_profiledisplay(mui_t *ui, uint8_t msg) {
   return 0;
 }
 
-/* start the TC IC */
+/* profile display */
 uint8_t mui_start_current_profiledisplay(mui_t *ui, uint8_t msg) {
   if ( msg == MUIF_MSG_FORM_START ) {
       is_profiledisplay_running = 1;
@@ -334,7 +395,6 @@ uint8_t mui_start_current_temp(mui_t *ui, uint8_t msg) {
   }
   return 0;
 }
-
 
 
 /* draw the current temperature value */
@@ -380,18 +440,21 @@ uint8_t mui_draw_current_time(mui_t *ui, uint8_t msg) {
       u8g2.drawFrame(2,2,84,46);
 
 
+
+      u8g2.drawLine(3,45,pixel_t1,pixel_temp1);
+      u8g2.drawLine(pixel_t1,pixel_temp1,pixel_t2,pixel_temp2);
+      u8g2.drawLine(pixel_t2,pixel_temp2,pixel_t3,pixel_temp3);
+      u8g2.drawLine(pixel_t3,pixel_temp3,pixel_t4,pixel_temp4);
+      u8g2.drawLine(pixel_t4,pixel_temp4,pixel_t4,pixel_temp4);
+
+      // for(int i=0;i<80;i++){
+      //   u8g2.drawPixel(graph_array[0][i], graph_array[1][i]);
+      // }
+
+
   }
   return 0;
 }
-
-// /* start the TC IC */
-// uint8_t mui_start_current_time(mui_t *ui, uint8_t msg) {
-//   if ( msg == MUIF_MSG_FORM_START ) {
-//       is_reflow_running = 1;
-//   }
-//   return 0;
-// }
-
 
 
 // MUIF List
@@ -415,7 +478,7 @@ muif_t muif_list[]  MUI_PROGMEM = {
   MUIF_BUTTON("B1", mui_u8g2_btn_goto_wm_fi), // Main Menu Back Button *
   MUIF_BUTTON("ST", mui_u8g2_btn_goto_wm_fi), // Button to start
   MUIF_BUTTON("CF", mui_u8g2_btn_goto_wm_fi), // Button to Config Profiles
-  MUIF_BUTTON("PI", mui_u8g2_btn_goto_wm_fi), // Button to PID Settings
+  //MUIF_BUTTON("PI", mui_u8g2_btn_goto_wm_fi), // Button to PID Settings
   MUIF_VARIABLE("PF",&profileNUM, mui_u8g2_u8_opt_line_wa_mud_pi), // Profile Selection Variable
 
   // Profile Config MUIFs
@@ -463,10 +526,10 @@ MUI_STYLE(2)
 MUI_XY("TD", 2, 63) // Postion of temp values
 MUI_STYLE(3)
 MUI_XYAT("ST", 46, 15, 3, " Start Profile")
-MUI_XYAT("PF", 92, 15, 0, " 1 | 2 | 3 ")
+MUI_XYAT("PF", 92, 15, 0, " 1 | 2 ")
 MUI_XYAT("CF", 52, 30, 4, " Config Profile ")
 MUI_XYAT("B1", 22, 45, 1, " Back ") 
-MUI_XYAT("PI", 85, 45, 2, "PID Settings")
+//MUI_XYAT("PI", 85, 45, 2, "PID Settings")
 
 // Config Profile Menu
 MUI_FORM(4)
@@ -523,15 +586,19 @@ MUI_XYAT("SO", 107, 40, 2, " STOP ")
 void setup() {
   profile_array_init(); // set up all profiles
   pinMode(buzzerPin, OUTPUT); // Set buzzer - pin 9 as an output
-  pinMode(SSRpin, OUTPUT); // Set buzzer - pin 9 as an output
+  pinMode(SSRpin, OUTPUT); // Set ssr - pin 9 as an output
   pinMode(statusLEDpin, OUTPUT); // Set buzzer - pin 9 as an output
   pinMode(alertLEDpin, OUTPUT); // Set buzzer - pin 9 as an output
   digitalWrite(SSRpin, LOW);
   digitalWrite(statusLEDpin, LOW);
   digitalWrite(alertLEDpin, LOW);
+
   digitalWrite(buzzerPin, HIGH);
+  //PORTD |= BIT(buzzerPin);
   delay(250);
   digitalWrite(buzzerPin, LOW);
+  //PORTD = ~( (~PORTD) | BIT(buzzerPin) );
+  
 
   u8g2.begin();
   mui.begin(u8g2, fds_data, muif_list, sizeof(muif_list)/sizeof(muif_t));
