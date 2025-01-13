@@ -11,8 +11,8 @@
 
 #define BIT(a) (1 << (a))
 // SSR Pin
-//#define SSRpin 9 // D9 - PortB pin 2
-#define SSRpin 2 // D9 - PortB pin 2
+#define SSRpin 9 // D9 - PortB pin 2
+//#define SSRpin 2 // D9 - PortB pin 2
 
 // LED pins
 #define statusLEDpin 7 // D7 - PortD pin 7
@@ -80,7 +80,7 @@ double preheat_temp, soak_temp, peakclimb_temp, peak_temp, cooldown_temp;
 
 uint8_t pixel_t1, pixel_t2, pixel_t3, pixel_t4, pixel_t5;
 uint8_t pixel_temp1, pixel_temp2, pixel_temp3, pixel_temp4, pixel_temp5;
-uint8_t pixel_graphline=3;
+uint8_t pixel_currentTime=0;
 //uint8_t graph_array[2][80];
 // uint8_t graph_index = 0;
 
@@ -170,11 +170,11 @@ uint8_t muif_reflowprofile_init(mui_t *ui, uint8_t msg){
       pixel_t4 = (int)(peak_time*(maxgraph_width/cooldown_time))+3;
       pixel_t5 = (int)(cooldown_time*(maxgraph_width/cooldown_time))+3;
 
-      pixel_temp1 = (int) (maxgraph_height+5)-(preheat_temp*((maxgraph_height+3) /cooldown_temp));
-      pixel_temp2 = (int) (maxgraph_height+5)-(soak_temp*((maxgraph_height+3) /cooldown_temp));
-      pixel_temp3 = (int) (maxgraph_height+5)-(peakclimb_temp*((maxgraph_height+3) /cooldown_temp));
-      pixel_temp4 = (int) (maxgraph_height+5)-(peak_temp*((maxgraph_height+3) /cooldown_temp));
-      pixel_temp5 = (int) (maxgraph_height+5)-(cooldown_temp*((maxgraph_height+3) /cooldown_temp));
+      pixel_temp1 = (int) (maxgraph_height+7)-(preheat_temp*((maxgraph_height+3) /peak_temp));
+      pixel_temp2 = (int) (maxgraph_height+7)-(soak_temp*((maxgraph_height+3) /peak_temp));
+      pixel_temp3 = (int) (maxgraph_height+7)-(peakclimb_temp*((maxgraph_height+3) /peak_temp));
+      pixel_temp4 = (int) (maxgraph_height+7)-(peak_temp*((maxgraph_height+3) /peak_temp));
+      pixel_temp5 = (int) (maxgraph_height+7)-(cooldown_temp*((maxgraph_height+3) /peak_temp));
 
       myPID.SetOutputLimits(0, 1);
 
@@ -220,15 +220,15 @@ void run_reflowprofile(void){
 
   // Pre-Heat Cycle
   if(time_since_reflow <= preheat_time){
-    Setpoint = preheat_temp;
+    Setpoint = preheat_temp * (time_since_reflow / preheat_time);
     reflowState = 1;
   // Soak Cycle
   } else if( (time_since_reflow > preheat_time) && (time_since_reflow <= soak_time)) { 
-    Setpoint = soak_temp;
+    Setpoint = soak_temp * (time_since_reflow / soak_time);
     reflowState = 2;
   // Peak Climb Cycle
   } else if( (time_since_reflow > soak_time) && (time_since_reflow <= peakclimb_time)) { 
-    Setpoint = peakclimb_temp;
+    Setpoint = peakclimb_temp * (time_since_reflow / peakclimb_time);
     reflowState = 3;
   // Peak Cycle
   } else if( (time_since_reflow > peakclimb_time) && (time_since_reflow <= peak_time)) { 
@@ -251,6 +251,9 @@ void run_reflowprofile(void){
     reflowState = 6;
     is_reflow_running = 0;
   }
+
+  pixel_currentTime = (int)(time_since_reflow*(maxgraph_width/cooldown_time))+3;
+
 
   myPID.Compute();
   if(Output < 0.5){
@@ -440,12 +443,13 @@ uint8_t mui_draw_current_time(mui_t *ui, uint8_t msg) {
       u8g2.drawFrame(2,2,84,46);
 
 
+      u8g2.drawLine(pixel_currentTime,46,pixel_currentTime, 2); // Time line
 
-      u8g2.drawLine(3,45,pixel_t1,pixel_temp1);
-      u8g2.drawLine(pixel_t1,pixel_temp1,pixel_t2,pixel_temp2);
-      u8g2.drawLine(pixel_t2,pixel_temp2,pixel_t3,pixel_temp3);
-      u8g2.drawLine(pixel_t3,pixel_temp3,pixel_t4,pixel_temp4);
-      u8g2.drawLine(pixel_t4,pixel_temp4,pixel_t4,pixel_temp4);
+      u8g2.drawLine(3,45,pixel_t1, pixel_temp1); // pre-heat climb
+      u8g2.drawLine(pixel_t1,pixel_temp1,pixel_t2,pixel_temp2); // Soaking climb
+      u8g2.drawLine(pixel_t2,pixel_temp2,pixel_t3,pixel_temp3); // Climb to Peak
+      u8g2.drawLine(pixel_t3,pixel_temp3,pixel_t4,pixel_temp4); // Peak Temp
+      u8g2.drawLine(pixel_t4,pixel_temp4,pixel_t5,pixel_temp5); // Cooldown
 
       // for(int i=0;i<80;i++){
       //   u8g2.drawPixel(graph_array[0][i], graph_array[1][i]);
@@ -470,9 +474,9 @@ muif_t muif_list[]  MUI_PROGMEM = {
   MUIF_RO("TC", mui_start_current_temp), // Starts tc readings
   
   // Main Menu Related MUIFs
-  MUIF_BUTTON("RF", mui_u8g2_btn_goto_wm_fi), // Button to Reflow Menu
+  //MUIF_BUTTON("RF", mui_u8g2_btn_goto_wm_fi), // Button to Reflow Menu
   MUIF_U8G2_LABEL(),                          // General Label *
-  MUIF_BUTTON("TT", mui_u8g2_btn_goto_wm_fi), // Button to Config
+  //MUIF_BUTTON("TT", mui_u8g2_btn_goto_wm_fi), // Button to Config
 
   // Reflow Menu MUIFs
   MUIF_BUTTON("B1", mui_u8g2_btn_goto_wm_fi), // Main Menu Back Button *
@@ -509,18 +513,18 @@ muif_t muif_list[]  MUI_PROGMEM = {
 fds_t fds_data[] = 
 
 // Main Menu
-MUI_FORM(1)
-MUI_AUX("TC") // Starts TC readings
-MUI_STYLE(2)
-MUI_XY("TD", 2, 63) // Postion of temp values
-MUI_STYLE(1)
-MUI_LABEL(20, 9, "Toasty Oven dev")
-MUI_STYLE(0)
-MUI_XYAT("RF", 40, 25, 2, " Reflow Menu ") 
-MUI_XYAT("TT", 39, 42, 1, " Thermal Test ")
+// MUI_FORM(1)
+// MUI_AUX("TC") // Starts TC readings
+// MUI_STYLE(2)
+// MUI_XY("TD", 2, 63) // Postion of temp values
+// MUI_STYLE(1)
+// MUI_LABEL(20, 9, "Toasty Oven dev")
+// MUI_STYLE(0)
+// MUI_XYAT("RF", 40, 25, 2, " Reflow Menu ") 
+// MUI_XYAT("TT", 39, 42, 1, " Thermal Test ")
 
 // Reflow Menu
-MUI_FORM(2)
+MUI_FORM(1)
 MUI_AUX("TC") // Starts TC readings
 MUI_STYLE(2)
 MUI_XY("TD", 2, 63) // Postion of temp values
@@ -528,7 +532,7 @@ MUI_STYLE(3)
 MUI_XYAT("ST", 46, 15, 3, " Start Profile")
 MUI_XYAT("PF", 92, 15, 0, " 1 | 2 ")
 MUI_XYAT("CF", 52, 30, 4, " Config Profile ")
-MUI_XYAT("B1", 22, 45, 1, " Back ") 
+//MUI_XYAT("B1", 22, 45, 1, " Back ") 
 //MUI_XYAT("PI", 85, 45, 2, "PID Settings")
 
 // Config Profile Menu
@@ -552,7 +556,7 @@ MUI_LABEL(90, 38, "T4: ")
 MUI_LABEL(90, 48, "T5: ")
 
 MUI_STYLE(3)
-MUI_XYAT("SV", 22, 20, 2, " Done ") 
+MUI_XYAT("SV", 22, 20, 1, " Done ") 
 MUI_STYLE(2)
 MUI_XY("t1", 72, 8)
 MUI_XY("t2", 72, 18)
@@ -578,7 +582,7 @@ MUI_XY("TD", 18, 63) // Postion of temp values
 MUI_XY("TI", 18, 54) // Postion of time values
 
 MUI_STYLE(0)
-MUI_XYAT("SO", 107, 40, 2, " STOP ") 
+MUI_XYAT("SO", 107, 40, 1, " STOP ") 
 
 ;
 
