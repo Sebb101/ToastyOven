@@ -1,4 +1,4 @@
-#include <Arduino.h>
+##include <Arduino.h>
 #include <U8g2lib.h>
 #include <MUIU8g2.h>
 #include "Adafruit_MAX31855.h"
@@ -528,10 +528,12 @@ MUI_FORM(1)
 MUI_AUX("TC") // Starts TC readings
 MUI_STYLE(2)
 MUI_XY("TD", 2, 63) // Postion of temp values
+MUI_STYLE(1)
+MUI_LABEL(20, 9, "Toasty Oven dev")
 MUI_STYLE(3)
-MUI_XYAT("ST", 46, 15, 3, " Start Profile")
-MUI_XYAT("PF", 92, 15, 0, " 1 | 2 ")
-MUI_XYAT("CF", 52, 30, 4, " Config Profile ")
+MUI_XYAT("ST", 46, 25, 3, " Start Profile")
+MUI_XYAT("PF", 92, 25, 0, " 1 | 2 ")
+MUI_XYAT("CF", 52, 40, 4, " Config Profile ")
 //MUI_XYAT("B1", 22, 45, 1, " Back ") 
 //MUI_XYAT("PI", 85, 45, 2, "PID Settings")
 
@@ -634,4 +636,6 @@ void loop() {
       mui.gotoForm(/* form_id= */ 1, /* initial_cursor_position= */ 0);
   }
 }
+  
+
   
