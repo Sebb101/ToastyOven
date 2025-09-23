@@ -9,7 +9,6 @@
 #include <SPI.h>
 #endif
 
-#define BIT(a) (1 << (a))
 // SSR Pin
 #define SSRpin 9 // D9 - PortB pin 2
 //#define SSRpin 2 // D9 - PortB pin 2
@@ -19,7 +18,7 @@
 #define alertLEDpin 12 // D12 - PortB pin 4
 
 // Buzzer Pins
-#define buzzerPin 7 // D6 - PortD pin 6
+#define buzzerPin 6 // D6 - PortD pin 6
 
 // Quadrature Encoder Pins
 #define A_CLK   15 //A0 (15), PortC pin 0
@@ -77,16 +76,16 @@ uint8_t reflowState = 0; // 0 OFF, 1 preheat, 2 soak, 3 peak Climb, 4 Peak, 5 co
 
 // Time of each profile steptype in Milliseconds
 float preheat_time = 120000;
-float soak_time = 240000;
-float peakclimb_time = 300000;
-float peak_time = 330000;
-float cooldown_time = 430000;
+float soak_time = 180000;
+float peakclimb_time = 240000;
+float peak_time = 270000;
+float cooldown_time = 330000;
 
 // Temp of each profile steptype in C
 double preheat_temp = 150;
-double soak_temp = 194;
-double peakclimb_temp = 250;
-double peak_temp = 250;
+double soak_temp = 185;
+double peakclimb_temp = 230;
+double peak_temp = 230;
 double cooldown_temp = 50;
 
 uint8_t pixel_t1, pixel_t2, pixel_t3, pixel_t4, pixel_t5;
@@ -135,6 +134,7 @@ uint8_t muif_reflowprofile_init(mui_t *ui, uint8_t msg){
       digitalWrite(SSRpin,LOW);
       //PORTB = ~( (~PORTB) | BIT(SSRpin) );
       digitalWrite(buzzerPin,LOW);
+      digitalWrite(statusLEDpin, LOW);
       //PORTD = ~( (~PORTD) | BIT(buzzerPin) );
 
       return_value = mui_u8g2_btn_goto_wm_fi(ui, msg);                    // finalise the form
@@ -158,9 +158,11 @@ void run_reflowprofile(void){
 
   if(time_since_reflow <= 500){
     digitalWrite(buzzerPin,HIGH);
+    digitalWrite(statusLEDpin, HIGH);
     //PORTD |= BIT(buzzerPin);
   } else{
     digitalWrite(buzzerPin,LOW);
+    digitalWrite(statusLEDpin, LOW);
     //PORTD = ~( (~PORTD) | BIT(buzzerPin) );
   }
 
@@ -186,10 +188,12 @@ void run_reflowprofile(void){
     reflowState = 5;
 
     if(time_since_reflow >= cooldown_time - 500 ){
+      digitalWrite(statusLEDpin, HIGH);
       digitalWrite(buzzerPin,HIGH);
       //PORTD |= BIT(buzzerPin);
     } else{
       digitalWrite(buzzerPin,LOW);
+      digitalWrite(statusLEDpin, LOW);
       //PORTD = ~( (~PORTD) | BIT(buzzerPin) );
     }
   } else {
@@ -281,7 +285,7 @@ void handle_events(void) {
 uint8_t mui_draw_current_profiledisplay(mui_t *ui, uint8_t msg) {
   if ( msg == MUIF_MSG_DRAW   ) {
       u8g2.setCursor(mui_get_x(ui), mui_get_y(ui));
-      u8g2.print(profileNUM+1);
+      //u8g2.print(profileNUM+1);
       is_profiledisplay_running = 0;
   }
   return 0;
@@ -300,9 +304,9 @@ uint8_t mui_draw_current_temp(mui_t *ui, uint8_t msg) {
   if ( msg == MUIF_MSG_DRAW   ) {
       u8g2.setCursor(mui_get_x(ui), mui_get_y(ui));
       u8g2.print(tempC,1);
-      u8g2.print("C / ");
+      u8g2.print(F("C / "));
       u8g2.print(tempF,1);
-      u8g2.print("F");
+      u8g2.print(F("F"));
   }
   return 0;
 }
@@ -321,38 +325,38 @@ uint8_t mui_draw_current_time(mui_t *ui, uint8_t msg) {
   if ( msg == MUIF_MSG_DRAW   ) {
       u8g2.setCursor(mui_get_x(ui), mui_get_y(ui));
       u8g2.print(Setpoint,1);
-      u8g2.print("C / ");
+      u8g2.print(F("C / "));
       u8g2.print((Setpoint* 1.8) + 32,1);
-      u8g2.print("F");
+      u8g2.print(F("F"));
 
       u8g2.setCursor(mui_get_x(ui)+61, mui_get_y(ui)+9);
-      u8g2.print("Time: ");
+      u8g2.print(F("Time: "));
       u8g2.print(time_since_reflow/1000,1);
-      u8g2.print(" S");
+      u8g2.print(F(" S"));
 
       u8g2.setCursor(mui_get_x(ui)+76, mui_get_y(ui)-45);
-      u8g2.print("Profile ");
+      u8g2.print(F("Profile "));
       u8g2.print(profileNUM+1);
 
       u8g2.setCursor(mui_get_x(ui)+70, mui_get_y(ui)-30);
       switch(reflowState){
         case 1:
-          u8g2.print("Preheating");
+          u8g2.print(F("Preheating"));
           break;
         case 2:
-          u8g2.print(" Soaking");
+          u8g2.print(F(" Soaking"));
           break;
         case 3:
-          u8g2.print("Climbing");
+          u8g2.print(F("Climbing"));
           break;
         case 4:
-          u8g2.print(" Peak ");
+          u8g2.print(F(" Peak "));
           break;
         case 5:
-          u8g2.print("Cooldown");
+          u8g2.print(F("Cooldown"));
           break;
         case 6:
-          u8g2.print(" Done ");
+          u8g2.print(F(" Done "));
           break;
       }
 
@@ -377,9 +381,6 @@ muif_t muif_list[]  MUI_PROGMEM = {
 
   MUIF_U8G2_FONT_STYLE(0, u8g2_font_helvR08_tr),        /* regular font 8 pixel */
   MUIF_U8G2_FONT_STYLE(1, u8g2_font_helvB08_tr),        /* bold font 8 pixel*/
-  // MUIF_U8G2_FONT_STYLE(2, u8g2_font_tiny5_tf),        /* tiny 6 pixel */
-  // MUIF_U8G2_FONT_STYLE(3, u8g2_font_6x10_tf),        /* tiny 7 pixel */
-
   MUIF_U8G2_FONT_STYLE(2, u8g2_font_tinyface_tr ),        /* tiny 5 pixel */
   MUIF_U8G2_FONT_STYLE(3, u8g2_font_blipfest_07_tr  ),        /* tiny 5 pixel */
 
@@ -445,10 +446,8 @@ void setup() {
   digitalWrite(alertLEDpin, LOW);
 
   digitalWrite(buzzerPin, HIGH);
-  //PORTD |= BIT(buzzerPin);
-  delay(250);
+  delay(100);
   digitalWrite(buzzerPin, LOW);
-  //PORTD = ~( (~PORTD) | BIT(buzzerPin) );
   
 
   u8g2.begin();
